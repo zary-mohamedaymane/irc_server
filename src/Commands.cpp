@@ -251,14 +251,14 @@ void Server::_handlePart(size_t i, std::vector<std::string>& tokens)
 		if (!chanExists)
 		{
 			_sendMessage(i, ":localhost.ircserver 403 " + chanName + " :No such channel\r\n");
-			return;
+			continue;
 		}
 
 		Channel& chan = _Channels[lowerChanName];
 		if (chan._memberFds.find(userFd) == chan._memberFds.end())
 		{
 			_sendMessage(i, ":localhost.ircserver 442 " + chanName + " :You're not on that channel\r\n");
-			return;
+			continue;
 		}
 
 		std::string partMsg = ":" + user._nickName + "!" + user._userName + "@" + user._hostName + " PART :" + chanName + "\r\n";
@@ -276,7 +276,7 @@ void Server::_handlePart(size_t i, std::vector<std::string>& tokens)
 void Server::_handlePrivmsg(size_t i, std::vector<std::string>& tokens)
 {
 	// 1. check parameters, extract recipients and message
-	// 2. loop over each recipients:
+	// 2. loop over each recipient:
 	// 2.1 target is channel -> check channel exists? -> user is channel member? -> send to members expect sender
 	// 2.2 target is a user -> check user existence? -> send to user
 

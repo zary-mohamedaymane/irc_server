@@ -26,7 +26,7 @@ Server::Server(int port, char *password): _port(port), _password(password), _ser
 		throw std::runtime_error("socket() failed");
 
 	int prior_flags = fcntl(_serverSocket, F_GETFL);
-	if (fcntl(_serverSocket, F_SETFL, prior_flags | O_NONBLOCK) < 0) 
+	if (fcntl(_serverSocket, F_SETFL, prior_flags | O_NONBLOCK) < 0)
 	{
 		(close(_serverSocket), _serverSocket = -1);
 		throw std::runtime_error("fcntl() failed");
