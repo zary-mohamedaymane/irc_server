@@ -51,10 +51,17 @@ class Server
 		void						_handlePart(size_t poll_index, std::vector<std::string>& tokens);
 		void						_handlePrivmsg(size_t poll_index, std::vector<std::string>& tokens);
 
+		/* ---------------------------------- YOUSSEF --------------------------------------------- */
 		void						_handleMode(size_t poll_index, std::vector<std::string>& tokens);
 		void						_handleTopic(size_t poll_index, std::vector<std::string>& tokens);
 		void						_handleInvite(size_t poll_index, std::vector<std::string>& tokens);
 		void						_handleKick(size_t poll_index, std::vector<std::string>& tokens);
+
+		bool						_lookupChannel(std::string channelName);
+		bool						_lookupSender(int userFd, std::string channelName);
+		bool						_lookupSenderPrivilege(int userFd, std::string channelName);
+		void						_removeUserFromChannel(int userFd, std::string channelName);
+		/* ---------------------------------------------------------------------------------------- */
 };
 
 #endif

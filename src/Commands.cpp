@@ -338,8 +338,111 @@ void Server::_handlePrivmsg(size_t i, std::vector<std::string>& tokens)
 
 
 /* ---------------------------------- YOUSSEF --------------------------------------------- */
+bool	Server::_lookupChannel(std::string channelName) {
+
+	if (_Channels.find(channelName) != _Channels.end())
+		return (true);
+
+	return (false);
+}
+
+bool	Server::_lookupSender(int userFd, std::string channelName) {
+
+	Channel	targetChannel = _Channels.find(channelName)->second;
+
+	if (targetChannel._memberFds.find(userFd) != targetChannel._memberFds.end())
+		return (true);
+	
+	return (false);
+}
+
+bool	Server::_lookupSenderPrivilege(int userFd, std::string channelName) {
+
+	Channel	targetChannel = _Channels.find(channelName)->second;
+
+	if (targetChannel._operatorFds.find(userFd) != targetChannel._memberFds.end())
+		return (true);
+	return (false);
+}
+
+void	Server::_removeUserFromChannel(int userFd, std::string channelName) {
+
+	Channel	targetChannel = _Channels.find(channelName)->second;
+
+	/* need to refactor */
+
+	targetChannel._memberFds.erase(targetChannel._memberFds.find(userFd));
+	targetChannel._operatorFds.erase(targetChannel._operatorFds.find(userFd));
+	targetChannel._invitedFds.erase(targetChannel._invitedFds.find(userFd));
+}
+
 void Server::_handleMode(size_t i, std::vector<std::string>& tokens) {(void)i; (void)tokens;}
 void Server::_handleTopic(size_t i, std::vector<std::string>& tokens) {(void)i; (void)tokens;}
 void Server::_handleInvite(size_t i, std::vector<std::string>& tokens) {(void)i; (void)tokens;}
-void Server::_handleKick(size_t i, std::vector<std::string>& tokens) {(void)i; (void)tokens;}
+void Server::_handleKick(size_t i, std::vector<std::string>& tokens) {
+
+	if (tokens.size() < 2) {
+		_sendMessage(i, ":localhost.ircserver 461 KICK :Not enough parameters\r\n");
+		return ;
+	}
+
+	std::vector<std::string>	chanList = splitByComma(tokens[0]);
+	std::string					targetUser = tokens[1];
+/* 	std::vector<std::string>	userList = splitByComma(tokens[1]); */
+	std::string					reason;
+	if (tokens.size() > 2)
+		reason = tokens[2];
+
+	for (size_t j = 0; j < chanList.size(); j++) {
+		if (!_lookupChannel(chanList[j])) {
+			_sendMessage(i, ":localhost.ircserver 403 KICK :" + chanList[j] + " :No such channel\r\n");
+			continue ;
+		}
+		if (!_lookupSender(i, chanList[i])) {
+			_sendMessage(i, ":localhost.ircserver 442 KICK:" + chanList[j] + " :You're not on that channel\r\n");
+			continue ;
+		}
+		if (!_lookupSenderPrivilege(i, chanList[i])) {
+			_sendMessage(i, "localhost.ircserver 482 KICK:" + chanList[j] + " :You're not channel operator\r\n");
+			continue ;
+		}
+		size_t	targetUserFd = _getUserByNick(targetUser);
+		if (!targetUserFd) {
+			_sendMessage(i, "localhost.ircserver 401 KICK:" + chanList[j] + " :No such nick\r\n");
+			continue ;
+		}
+		if (!_lookupSender(targetUserFd, chanList[i])) {
+			_sendMessage(i, "localhost.ircserver 441 KICK:" + chanList[j] + " :They aren't on that channel\r\n");
+			continue ;
+		}
+
+		std::string	kickMsg = "KICK " + targetUser + " from " + chanList[j];
+		if (tokens.size() > 2)
+			kickMsg += " using\"" + reason + "\" as the reason (comment).";
+
+		_broadcastToChannel(chanList[j], kickMsg, -1);
+
+		_removeUserFromChannel(targetUserFd, chanList[j]);
+
+		/* need to refactor */
+
+		_Users.find(targetUserFd)->second._joinedChannels.erase(_Users.find(targetUserFd)->second._joinedChannels.find(chanList[j]));
+
+		if (_Channels.find(chanList[j])->second._memberFds.empty())
+			_Channels.erase(_Channels.find(chanList[j]));
+	}
+
+	/* std::cout << "channel list: " << std::endl;
+	for (size_t i = 0; i < chanList.size(); i++) {
+		std::cout << chanList[i] << std::endl;
+	}
+
+	std::cout << "user list: " << std::endl;
+	for (size_t i = 0; i < userList.size(); i++) {
+		std::cout << userList[i] << std::endl;
+	}
+
+	if (tokens.size() > 2)
+		std::cout << tokens[2] << std::endl; */
+}
 /* ---------------------------------------------------------------------------------------- */
