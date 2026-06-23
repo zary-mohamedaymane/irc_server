@@ -1,6 +1,7 @@
 #include "../inc/Server.hpp"
 #include <iostream>
 #include <sstream>
+#include <string>
 
 void Server::_handleCapabilityNegotiation(size_t i, std::vector<std::string> &tokens)
 {
@@ -366,8 +367,6 @@ void Server::_removeUserFromChannel(int userFd, std::string channelName) {
   targetChannel._invitedFds.erase(userFd);
 }
 
-void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {(void)i; (void)tokens;}
-void Server::_handleTopic(size_t i, std::vector<std::string> &tokens) {(void)i; (void)tokens;}
 void Server::_handleKick(size_t i, std::vector<std::string> &tokens) {
 
   if (tokens.size() < 2) {
@@ -490,5 +489,132 @@ void Server::_handleInvite(size_t i, std::vector<std::string> &tokens) {
   chan._invitedFds.insert(targetUserFd);
   _sendMessage(i, ":localhost.ircserver 341 " + sender._nickName + " " + targetUser + " " + targetChan + "\r\n");
   _sendMessage(targetUserPollIndex, ":" + sender._nickName + "!" + sender._userName + "@" + sender._hostName + "INVITE" + targetUser + " :" + targetChan + "\r\n");
+}
+
+void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
+
+  if (tokens.size() < 1) {
+    _sendMessage(i, "MODE :Not enough parameters\r\n");
+    return ;
+  }
+
+  std::string target = tokens[0];
+  if (target[0] != '#' || target[0] != '&')
+    return ;
+
+  std::string lowerChanName = _tolowerStr(target);
+  if (!_lookupChannel(lowerChanName)) {
+    _sendMessage(i, ":localhost.ircserver 403 MODE :" + target + " :No such channel\r\n");
+    return ;
+  }
+
+  int       senderFd = _pollFds[i].fd;
+  User&     sender = _Users[senderFd];
+  Channel&  chan = _Channels[lowerChanName];
+
+  if (tokens.size() == 1) {
+    std::string viewModeStr = ":localhost.ircserver 324 " + sender._nickName + " " + target + " ";
+    if (chan._inviteOnly)
+      viewModeStr += "+i";
+    if (chan._topicProtected)
+      viewModeStr += "+t";
+    if (chan._userLimit > 0)
+      viewModeStr += "+l" + std::to_string(chan._userLimit);
+    viewModeStr += "\r\n";
+    _sendMessage(i, viewModeStr);
+    return ;
+  }
+
+  if (_lookupSenderPrivilege(senderFd, lowerChanName)) {
+    _sendMessage(i, "localhost.ircserver 482 MODE :" + target + " :You're not channel operator\r\n");
+    return ;
+  }
+
+  std::string modeStr = tokens[1];
+  bool        sign = true;
+  size_t      argIndex = 2;
+
+  for (size_t j = 0; j < modeStr.size(); j++) {
+    if (modeStr[j] == '+') {
+      sign = true;
+      continue ;
+    }
+    else if (modeStr[j] == '-') {
+      sign = false;
+      continue ;
+    }
+
+    if (sign == true && modeStr[j] == 'i') {
+      chan._inviteOnly = true;
+      continue ;
+    }
+    else {
+      chan._inviteOnly = false;
+      continue ;
+    }
+
+    if (sign == true && modeStr[j] == 't') {
+      chan._topicProtected = true;
+      continue ;
+    }
+    else {
+      chan._topicProtected = false;
+        continue ;
+    }
+
+    if (sign == true && modeStr[j] == 'k') {
+      if (argIndex < tokens.size())
+        chan._key = tokens[argIndex++];
+      else {
+        _sendMessage(i, ":localhost.ircserver 461 MODE :Not enough parameters\r\n");
+        return ;
+      }
+      continue ;
+    }
+    else {
+      chan._key = "";
+      continue ;
+    }
+
+    if (sign == true && modeStr[j] == 'l') {
+      if (argIndex < tokens.size())
+        chan._userLimit = std::atoi(tokens[argIndex++].c_str());
+      else {
+        _sendMessage(i, ":localhost.ircserver 461 MODE :Not enough parameters\r\n");
+      }
+      continue ;
+    }
+    else {
+      chan._userLimit = 0;
+      continue ;
+    }
+
+    if (modeStr[j] == 'o') {
+      std::string targetNick;
+      size_t  targetUserPollFd;
+      if (argIndex < tokens.size()) {
+        targetNick = tokens[argIndex++];
+        targetUserPollFd = _getUserByNick(targetNick);
+        if (!targetUserPollFd)
+          continue ;
+      }
+      int targetUserFd = _pollFds[targetUserPollFd].fd;
+      if (sign == true) {
+        chan._operatorFds.insert(targetUserFd);
+        continue ;
+      }
+      else {
+        chan._operatorFds.erase(targetUserFd);
+        continue ;
+      }
+    }
+
+    _sendMessage(i, ":localhost.ircserver 472 " + sender._nickName + " " + modeStr[j] + " :is unknown mode char to me \r\n");
+    continue ;
+  }
+}
+
+void Server::_handleTopic(size_t i, std::vector<std::string> &tokens) {
+
 }
 /* ---------------------------------------------------------------------------------------- */
