@@ -608,7 +608,46 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
 
 void Server::_handleTopic(size_t i, std::vector<std::string> &tokens) {
 
-  (void)i;
-  (void)tokens;
+  if (tokens.size() < 1) {
+    _sendMessage(i, ":localhost.ircserver 461 TOPIC :Not enough paramters\r\n");
+    return ;
+  }
+
+  std::string targetChan = tokens[0];
+  std::string lowerChanName = _tolowerStr(targetChan);
+
+  if (!_lookupChannel(lowerChanName)) {
+    _sendMessage(i, ":localhost.ircserver 403 " + _Users[_pollFds[i].fd]._nickName + " " + targetChan + " :No such channel\r\n");
+    return ;
+  }
+
+  int senderFd = _pollFds[i].fd;
+
+  if (!_lookupSender(senderFd, lowerChanName)) {
+    _sendMessage(i, ":localhost.ircserver 442 " + _Users[_pollFds[i].fd]._nickName + " " + targetChan + " :You're not on that channel\r\n");
+    return ;
+  }
+
+  Channel&  chan = _Channels[lowerChanName];
+  User&     sender = _Users[senderFd];
+
+  if (tokens.size() == 1) {
+    if (chan._topic.empty())
+      _sendMessage(i, ":localhost.ircserver 331 " + sender._nickName + " " + targetChan + " :No topic is set\r\n");
+    else
+      _sendMessage(i, ":localhost.ircserver 332 " + sender._nickName + " " + targetChan + " :" + chan._topic + "\r\n");
+    return ;
+  }
+
+  if (chan._topicProtected) {
+    if (!_lookupSenderPrivilege(senderFd, lowerChanName)) {
+      _sendMessage(i, ":localhost.ircserver 482 " + sender._nickName + " " + targetChan + " :You're not channel operator\r\n");
+      return ;
+    }
+  }
+
+  chan._topic = tokens[1];
+  std::string broadcastMsg = ":" + sender._nickName + "!" + sender._userName + "@" + sender._hostName + " TOPIC " + targetChan + " :" + tokens[1] + "\r\n";
+  _broadcastToChannel(lowerChanName, broadcastMsg, -1);
 }
 /* ---------------------------------------------------------------------------------------- */
