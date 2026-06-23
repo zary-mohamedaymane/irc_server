@@ -5,6 +5,8 @@
 #include <vector>
 #include <map>
 #include <poll.h> // struct pollfd
+#include <cstdlib>  // added by yhajbi
+#include <sstream>  // added by yhajbi
 
 #include "User.hpp"
 #include "Channel.hpp"
