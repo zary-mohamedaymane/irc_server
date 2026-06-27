@@ -13,8 +13,7 @@ void Server::_handleCapabilityNegotiation(size_t i, std::vector<std::string> &to
   {
     if (user._registered)
     {
-      _sendMessage(i, ":localhost.ircserver 001 " + user._nickName + " :Welcome to the 42 Internet Relay Network\
-				" + user._nickName + "!" + user._userName + "@" + user._hostName + "\r\n");
+      _sendMessage(i, ":localhost.ircserver 001 " + user._nickName + " :Welcome to the 42 Internet Relay Network " + user._nickName + "!" + user._userName + "@" + user._hostName + "\r\n");
       _sendMessage(i, ":localhost.ircserver 002 " + user._nickName + " :Your host is localhost, running version 1.0\r\n");
       _sendMessage(i, ":localhost.ircserver 003 " + user._nickName + " :This Sever was created today\r\n");
       _sendMessage(i, ":localhost.ircserver 004 " + user._nickName + " localhost.ircserver 1.0 - itkol\r\n");
@@ -29,20 +28,21 @@ void Server::_handlePass(size_t i, std::vector<std::string> &tokens, bool &erase
   // 464 = ERR_PASSWDMISMATCH
 
   User &user = _Users[_pollFds[i].fd];
+	std::string target = user._nickName.empty() ? "*" : user._nickName;
 
   if (tokens.empty())
   {
-    _sendMessage(i, ":localhost.ircserver 461 * PASS :Not enough parameters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " PASS :Not enough parameters\r\n");
     (_handleQuit(i, "auth error"), erased = true);
   }
   else if (user._registered)
   {
-    _sendMessage(i, ":localhost.ircserver 462 " + user._nickName + " :Unauthorized command (already registered)\r\n");
+    _sendMessage(i, ":localhost.ircserver 462 " + target + " :You may not reregister\r\n");
     (_handleQuit(i, "auth error"), erased = true);
   }
   else if (tokens[0] != _password)
   {
-    _sendMessage(i, ":localhost.ircserver 464 * :Password incorrect\r\n");
+    _sendMessage(i, ":localhost.ircserver 464 " + target + " :Password incorrect\r\n");
     (_handleQuit(i, "auth error"), erased = true);
   }
   else
@@ -55,26 +55,33 @@ void Server::_handleNick(size_t i, std::vector<std::string> &tokens, bool &erase
   // 432 = ERR_ERRONEUSNICKNAME
   // 433 = ERR_NICKNAMEINUSE
 
-  User &user = _Users[_pollFds[i].fd];
+	int fd = _pollFds[i].fd;
+  User &user = _Users[fd];
+	std::string target = user._nickName.empty() ? "*" : user._nickName;
+
   size_t j;
 
   if (tokens.empty())
-    _sendMessage(i, ":localhost.ircserver 431 * :No nickname given\r\n");
+    _sendMessage(i, ":localhost.ircserver 431 " + target + " :No nickname given\r\n");
   else if (!user._authenticated)
   {
-    _sendMessage(i, ":localhost.ircserver 464 * :Password required\r\n");
+    _sendMessage(i, ":localhost.ircserver 464 " + target + " :Password required\r\n");
     (_handleQuit(i, "auth error"), erased = true);
   }
   else if (!User::_validNickName(tokens[0]))
-    _sendMessage(i, ":localhost.ircserver 432 * " + tokens[0] + " :Erroneous nickname\r\n");
+    _sendMessage(i, ":localhost.ircserver 432 "  + tokens[0] + " :Erroneous nickname\r\n");
   else if ((j = _getUserByNick(tokens[0])) != 0 && i != j)
-    _sendMessage(i, ":localhost 433 * " + tokens[0] + " :Nickname is already in use\r\n");
+    _sendMessage(i, ":localhost 433 " + tokens[0] + " :Nickname is already in use\r\n");
   else
   {
-    if (user._registered) // nickname change, potentially same nickname
+    if (user._registered) // must broadcast nickname change (potentially same nickname)
     {
-      // TODO: broadcast msg to all channels in which user is a member
-      // ":" + user._nickName + "!" + user._userName + "@" + user._hostName + " NICK :" + tokens[0] + "\r\n"
+			std::string msg = ":" + user._nickName + "!" + user._userName + "@" + user._hostName + " NICK :" + tokens[0] + "\r\n";
+			for (std::set<std::string>::iterator it = user._joinedChannels.begin(); it != user._joinedChannels.end(); ++it)
+  		{
+    		std::string chanName = *it;
+				_broadcastToChannel(chanName, msg, fd);
+			}
     }
     user._nickName = tokens[0];
   }
@@ -86,16 +93,17 @@ void Server::_handleUser(size_t i, std::vector<std::string> &tokens, bool &erase
   // 462 = ERR_ALREADYREGISTRED
 
   User &user = _Users[_pollFds[i].fd];
+	std::string target = user._nickName.empty() ? "*" : user._nickName;
 
   if (tokens.size() < 4)
-    _sendMessage(i, ":localhost.ircserver 461 " + user._nickName + " USER :Not enough parameters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " USER :Not enough parameters\r\n");
   else if (!user._authenticated)
   {
-    _sendMessage(i, ":localhost.ircserver 464 * :Password required\r\n");
+    _sendMessage(i, ":localhost.ircserver 464 " + target + " :Password required\r\n");
     (_handleQuit(i, "auth error"), erased = true);
   }
   else if (user._registered)
-    _sendMessage(i, ":localhost.ircserver 462 " + user._nickName + " :Unauthorized command (already registered)\r\n");
+    _sendMessage(i, ":localhost.ircserver 462 " + target + " :You may not reregister\r\n");
   else
   {
     user._userName = tokens[0];
@@ -123,7 +131,7 @@ void Server::_handleJoin(size_t i, std::vector<std::string> &tokens) {
   // argument) from tokens for each channel name/key pair:
   // 1. validate channel name syntax
   // 2. check channel existence
-  // 2.1 channel doesnt exist -> create it (CHECK GRAMMAR!!!!) and add user to operators, then add channel to server
+  // 2.1 channel doesnt exist -> create it and add user to operators, then add channel to server
   // 2.2 channel exists -> check double-join? -> invite-only? -> key correct? -> channel full? -> add user fd to channel
   // 3. add channel name to user's joinedChannels
   // 4. broadcast to channel that the new user joined
@@ -131,10 +139,11 @@ void Server::_handleJoin(size_t i, std::vector<std::string> &tokens) {
 
   int userFd = _pollFds[i].fd;
   User &user = _Users[userFd];
+  std::string target = user._nickName.empty() ? "*" : user._nickName;
 
   if (tokens.empty())
   {
-    _sendMessage(i, ":localhost.ircserver 461 " + user._nickName + " JOIN :Not enough parameters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " JOIN :Not enough parameters\r\n");
     return;
   }
   std::vector<std::string> chanList = splitByComma(tokens[0]);
@@ -148,16 +157,15 @@ void Server::_handleJoin(size_t i, std::vector<std::string> &tokens) {
     std::string lowerChanName = _tolowerStr(chanName);
     std::string providedKey = (x < keyList.size()) ? keyList[x] : "";
 
-    if (!(chanName[0] == '#' || chanName[0] == '&')) // check RFC for grammar
+    if (!Channel::_validChannelName(chanName))
     {
-      _sendMessage(i, ":localhost.ircserver 403 " + user._nickName + " " + chanName + " :No such channel\r\n");
+      _sendMessage(i, ":localhost.ircserver 403 " + target + " " + chanName + " :No such channel\r\n");
       continue;
     }
 
     bool chanExists = (_Channels.find(lowerChanName) != _Channels.end());
 
     if (!chanExists) {
-      // YOU HAVE TO PARSE CHANNEL NAME AND CHECK IF IT IS VALID!
       Channel newChan;
       newChan._name = chanName; 
       newChan._memberFds.insert(userFd);
@@ -174,19 +182,19 @@ void Server::_handleJoin(size_t i, std::vector<std::string> &tokens) {
 
       if (chan._inviteOnly && chan._invitedFds.find(userFd) == chan._invitedFds.end())
       {
-        _sendMessage(i, ":localhost.ircserver 473 " + user._nickName + " " + chanName + " :Cannot join channel (+i)\r\n");
+        _sendMessage(i, ":localhost.ircserver 473 " + target + " " + chanName + " :Cannot join channel (+i)\r\n");
         continue;
       }
 
       if (!chan._key.empty() && providedKey != chan._key)
       {
-        _sendMessage(i, ":localhost.ircserver 475 " + user._nickName + " " + chanName + " :Cannot join channel (+k)\r\n");
+        _sendMessage(i, ":localhost.ircserver 475 " + target + " " + chanName + " :Cannot join channel (+k)\r\n");
         continue;
       }
 
       if (chan._userLimit > 0 && chan._memberFds.size() >= chan._userLimit)
       {
-        _sendMessage(i, ":localhost.ircserver 471 " + user._nickName + " " + chanName + " :Cannot join channel (+l)\r\n");
+        _sendMessage(i, ":localhost.ircserver 471 " + target + " " + chanName + " :Cannot join channel (+l)\r\n");
         continue;
       }
 
@@ -198,11 +206,11 @@ void Server::_handleJoin(size_t i, std::vector<std::string> &tokens) {
     std::string joinMsg = ":" + user._nickName + "!" + user._userName + "@" + user._hostName + " JOIN :" + chanName + "\r\n";
     _broadcastToChannel(lowerChanName, joinMsg, -1);
 
-    Channel &chan = _Channels[chanName];
+    Channel &chan = _Channels[lowerChanName];
     if (chan._topic.empty())
-      _sendMessage(i, ":localhost.ircserver 331 " + user._nickName + " " + chanName + " :No topic is set\r\n");
+      _sendMessage(i, ":localhost.ircserver 331 " + target + " " + chanName + " :No topic is set\r\n");
     else
-      _sendMessage(i, ":localhost.ircserver 332 " + user._nickName + " " + chanName + " :" + chan._topic + "\r\n");
+      _sendMessage(i, ":localhost.ircserver 332 " + target + " " + chanName + " :" + chan._topic + "\r\n");
 
     std::string nameList = "";
     for (std::set<int>::iterator mit = chan._memberFds.begin(); mit != chan._memberFds.end(); ++mit) 
@@ -216,8 +224,8 @@ void Server::_handleJoin(size_t i, std::vector<std::string> &tokens) {
     if (!nameList.empty() && nameList[nameList.size() - 1] == ' ')
       nameList.erase(nameList.size() - 1);
 
-    _sendMessage(i, ":localhost.ircserver 353 " + user._nickName + " = " + chanName + " :" + nameList + "\r\n");
-    _sendMessage(i, ":localhost.ircserver 366 " + user._nickName + " " + chanName + " :End of /NAMES list.\r\n");
+    _sendMessage(i, ":localhost.ircserver 353 " + target + " = " + chanName + " :" + nameList + "\r\n");
+    _sendMessage(i, ":localhost.ircserver 366 " + target + " " + chanName + " :End of /NAMES list.\r\n");
   }
 }
 

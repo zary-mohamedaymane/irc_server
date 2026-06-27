@@ -131,7 +131,7 @@ void Server::_handleConnect()
 	int clientSocket = accept(_serverSocket, NULL, NULL);
 	if (clientSocket < 0)
 	{
-		std::cerr << "accept() failed"; // throw or just display error message?
+		std::cerr << "new client: accept() failed" << std::endl;
 		return;
 	}
 
@@ -139,7 +139,8 @@ void Server::_handleConnect()
 	if (fcntl(clientSocket, F_SETFL, prior_flags | O_NONBLOCK) < 0) 
 	{
 		(close(clientSocket), clientSocket = -1);
-		throw std::runtime_error("fcntl() failed");
+		std::cerr << "new client: fcntl() failed" << std::endl;
+		return;
 	}
 
 	struct pollfd clientPoll;
@@ -162,8 +163,8 @@ void Server::_handleQuit(size_t i, std::string msg)
 	int fd = _pollFds[i].fd;
   User& user = _Users[fd];
 
-	//if (user._registered)
-	//{
+	if (user._registered)
+	{
 		std::string quitMsg = ":" + user._nickName + "!" + user._userName + "@" + user._hostName + " QUIT :" + msg + "\r\n";
 		for (std::map<int, User>::iterator it = _Users.begin(); it != _Users.end(); ++it)
 		{
@@ -191,7 +192,7 @@ void Server::_handleQuit(size_t i, std::string msg)
         	_Channels.erase(chanName);
     	}
     }
- // }
+}
 
 	_Users.erase(fd);
 	std::cout << "Client (FD = " << fd << ") disconnected from server" << std::endl;
@@ -212,7 +213,13 @@ bool Server::_shareChannels(int userFd1, int userFd2)
 		{
 			// check if this channel is in user2's joined channels
 			if (user2._joinedChannels.find(chanName) != user2._joinedChannels.end())
-				return true;
+			{
+				// now check if users are actually still in channel and not only listing them
+				Channel& chan = _Channels[chanName];
+				if (chan._memberFds.find(userFd1) != chan._memberFds.end()
+					&& chan._memberFds.find(userFd2) != chan._memberFds.end())
+					return true;
+			}
 		}
 	}
 	return false;
@@ -316,8 +323,21 @@ void Server::_sendMessage(size_t i, std::string message)
 
 std::string Server::_tolowerStr(std::string str)
 {
+	// Because of IRC's scandanavian origin, the characters {}| are
+  // considered to be the lower case equivalents of the characters []\,
+  // respectively. This is a critical issue when determining the
+  // equivalence of two nicknames
   for (size_t i = 0; i < str.size(); i++)
-    str[i] = std::tolower(static_cast<unsigned char>(str[i]));
+	{
+		if (str[i] == '[')
+			str[i] = '{';
+		else if (str[i] == ']')
+			str[i] = '}';
+		else if (str[i] == '\\')
+			str[i] = '|';
+		else
+    	str[i] = std::tolower(static_cast<unsigned char>(str[i]));
+	}
   return str;
 }
 
