@@ -231,18 +231,20 @@ void Server::_handleJoin(size_t i, std::vector<std::string> &tokens) {
 
 void Server::_handlePart(size_t i, std::vector<std::string> &tokens) {
   // 1. check parameters, extract channel names
-  // 2. for each channel
+  // 2. for each channel:
   // 2.1 channel exists?
   // 2.2 user in channel?
-  // 2.3 remove user from channel and broadcast part message to channe leaving user
-  // 2.4 if channel is empty, remove it
+  // 2.3 remove user from channel and broadcast part message
+	// 2.4 remove channel name from user's joined channels
+  // 2.5 if channel is empty, remove it
 
   int userFd = _pollFds[i].fd;
   User &user = _Users[userFd];
+	std::string target = user._nickName.empty() ? "*" : user._nickName;
 
   if (tokens.empty())
   {
-    _sendMessage(i, ":localhost.ircserver 461 PART :Not enough parameters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " PART :Not enough parameters\r\n");
     return;
   }
   std::vector<std::string> chanList = splitByComma(tokens[0]);
@@ -255,14 +257,14 @@ void Server::_handlePart(size_t i, std::vector<std::string> &tokens) {
     bool chanExists = (_Channels.find(lowerChanName) != _Channels.end());
     if (!chanExists)
     {
-      _sendMessage(i, ":localhost.ircserver 403 " + chanName + " :No such channel\r\n");
+      _sendMessage(i, ":localhost.ircserver 403 " + target + " " + chanName + " :No such channel\r\n");
       continue;
     }
 
     Channel &chan = _Channels[lowerChanName];
     if (chan._memberFds.find(userFd) == chan._memberFds.end())
     {
-      _sendMessage(i, ":localhost.ircserver 442 " + chanName + " :You're not on that channel\r\n");
+      _sendMessage(i, ":localhost.ircserver 442 " + target + " " + chanName + " :You're not on that channel\r\n");
       continue;
     }
 
@@ -273,7 +275,9 @@ void Server::_handlePart(size_t i, std::vector<std::string> &tokens) {
     chan._operatorFds.erase(userFd);
     chan._invitedFds.erase(userFd);
 
-    if (chan._memberFds.empty())
+		user._joinedChannels.erase(lowerChanName);
+		
+		if (chan._memberFds.empty())
       _Channels.erase(chanName);
   }
 }
