@@ -418,7 +418,7 @@ void Server::_handleKick(size_t i, std::vector<std::string> &tokens) {
       continue;
     }
     if (!_lookupSenderPrivilege(senderFd, lowerChanName)) {
-      _sendMessage(i, "localhost.ircserver 482 KICK:" + currentChan + " :You're not channel operator\r\n");
+      _sendMessage(i, "localhost.ircserver 482 " + _Users[senderFd]._nickName + " KICK:" + currentChan + " :You're not channel operator\r\n");
       continue;
     }
 
