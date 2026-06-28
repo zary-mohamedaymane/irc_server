@@ -75,7 +75,8 @@ void Server::run()
 
 	while (instance)
 	{
-		if (poll(&_pollFds[0], _pollFds.size(), -1) < 0 && instance)
+		int r;
+		if ((r = poll(&_pollFds[0], _pollFds.size(), -1)) < 0 && instance)
 			throw std::runtime_error("poll() failed");
 
 		for (size_t i = 0; i < _pollFds.size();)
@@ -92,7 +93,7 @@ void Server::run()
 			{
 				bool erased = false;
         if (_pollFds[i].revents & POLLIN)
-            _handleMessage(i, erased);
+        	_handleMessage(i, erased);
         if (!erased && (_pollFds[i].revents & (POLLHUP | POLLERR)))
         {
             _handleQuit(i, "error or hangup");
@@ -247,6 +248,11 @@ void Server::_handleMessage(size_t i, bool &erased)
 		std::string& buffer = _Users[_pollFds[i].fd]._buffer;
 		buffer.append(buf);
 
+		/* debug */
+		//std::cout << "buf: [" << buf << "]" << std::endl;
+		//std::cout << "client buffer: [" << buffer << "]\n\n" << std::endl;
+		/* debug */
+
 		size_t end = 0;
 		while (!erased && (end = buffer.find("\n", 0)) != std::string::npos)
 		{
@@ -264,11 +270,11 @@ void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 {
 	// parse command into tokens (COMMAND parameter list)
 	// call appropriate authentication / commad handler
-	
+
 	/* debug */
 	std::cout << "'" << command << "'" << std::endl;
 	/* debug */
-	
+
 	std::vector<std::string>	tokens;
 	size_t										colonPos = command.find(":");
 	std::string								beforeColon = command;

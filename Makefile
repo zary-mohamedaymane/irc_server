@@ -1,5 +1,5 @@
 NAME	= ircserv
-CC		= c++ -g -O0 -std=c++98 -Wall -Wextra -Werror
+CC		= c++ -std=c++98 -Wall -Wextra -Werror
 
 SRC		= src/main.cpp src/Server.cpp src/Commands.cpp src/User.cpp src/Channel.cpp
 INC		= inc/Server.hpp inc/User.hpp inc/Channel.hpp
