@@ -10,14 +10,11 @@ void Server::_handlePass(size_t i, std::vector<std::string> &tokens, bool &erase
   // 464 = ERR_PASSWDMISMATCH
 
   User &user = _Users[_pollFds[i].fd];
-	std::string target = user._nickName.empty() ? "*" : user._nickName;
+	//std::string target = user._nickName.empty() ? "*" : user._nickName;
 
   if (tokens.empty())
-  {
-    _sendMessage(i, ":localhost.ircserver 461 " + target + " PASS :Not enough parameters\r\n");
-    (_handleQuit(i, "auth error"), erased = true);
-  }
-  else if (user._registered)
+    _sendMessage(i, ":localhost.ircserver 461 PASS :Not enough parameters\r\n");
+  else if (user._registered) // <---
   {
     _sendMessage(i, ":localhost.ircserver 462 " + target + " :You may not reregister\r\n");
     (_handleQuit(i, "auth error"), erased = true);
@@ -25,7 +22,12 @@ void Server::_handlePass(size_t i, std::vector<std::string> &tokens, bool &erase
   else if (tokens[0] != _password)
   {
     _sendMessage(i, ":localhost.ircserver 464 " + target + " :Password incorrect\r\n");
-    (_handleQuit(i, "auth error"), erased = true);
+    user._authenticated = false; // only last password counts, so maybe first and second is incorrect -> not authenticated
+    if (user._registered)
+		{
+			_handleQuit(i, "auth error");
+			erased = true;
+		}
   }
   else
     user._authenticated = true;
