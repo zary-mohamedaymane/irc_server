@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <deque>
 #include <poll.h> // struct pollfd
 #include <cstdlib>  // added by yhajbi
 #include <sstream>  // added by yhajbi
@@ -44,9 +45,9 @@ class Server
 
 		void 						_broadcastToChannel(std::string chanName, std::string message, int excludeFd);
 
-		void						_handlePass(size_t poll_index, std::vector<std::string>& tokens, bool& erased);
-		void						_handleNick(size_t poll_index, std::vector<std::string>& tokens, bool& erased);
-		void						_handleUser(size_t poll_index, std::vector<std::string>& tokens, bool& erased);
+		void						_handlePass(size_t poll_index, std::vector<std::string>& tokens);
+		void						_handleNick(size_t poll_index, std::vector<std::string>& tokens);
+		void						_handleUser(size_t poll_index, std::vector<std::string>& tokens);
 
 		void						_handleJoin(size_t poll_index, std::vector<std::string>& tokens);
 		void						_handlePart(size_t poll_index, std::vector<std::string>& tokens);

@@ -93,7 +93,7 @@ void Server::run()
 				bool erased = false;
         if (_pollFds[i].revents & POLLIN)
         	_handleMessage(i, erased);
-        if (!erased && (_pollFds[i].revents & (POLLHUP | POLLERR)))
+        if (!erased && (_pollFds[i].revents & (POLLERR | POLLHUP)))
         {
             _handleQuit(i, "error or hangup");
             erased = true;
@@ -197,6 +197,7 @@ void Server::_handleQuit(size_t i, std::string msg)
 	_Users.erase(fd);
 	std::cout << "Client (FD = " << fd << ") disconnected from server" << std::endl;
 
+
 	(close(fd), fd = -1);
 	_pollFds.erase(_pollFds.begin() + i);
 }
@@ -291,15 +292,17 @@ void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 	std::string cmd = tokens[0];
 	tokens.erase(tokens.begin());
 
-	if (cmd == "PASS") {_handlePass(i, tokens, erased); return;}
-	else if (cmd == "NICK") {_handleNick(i, tokens, erased); return;}
-	else if (cmd == "USER") {_handleUser(i, tokens, erased); return;}
+	if (cmd == "PASS") {_handlePass(i, tokens); return;}
+	else if (cmd == "NICK") {_handleNick(i, tokens); return;}
+	else if (cmd == "USER") {_handleUser(i, tokens); return;}
 
-	if (!_Users[_pollFds[i].fd]._registered &&
+	User& user = _Users[_pollFds[i].fd];
+	std::string target = user._nickName.empty() ? "*" : user._nickName;
+	if (!user._registered &&
 		(cmd == "JOIN" || cmd == "PART" || cmd == "MODE" || cmd == "TOPIC"
 		|| cmd == "INVITE" || cmd == "KICK" || cmd == "PRIVMSG"))
 	{
-	 	_sendMessage(i, ":localhost.ircserver 451 :You have not registered\r\n");
+	 	_sendMessage(i, ":localhost.ircserver 451 " + target + " :You have not registered\r\n");
 		return;
 	}
 
@@ -365,7 +368,7 @@ size_t Server::_getPollIndexByFd(int fd)
 
 void Server::_broadcastToChannel(std::string chanName, std::string message, int excludeFd)
 {
-	// check if channel exists (to be safe hhh)
+	// check if channel exists
 	// loop over channel members
 	// get pollIndex from fd and send message
 
