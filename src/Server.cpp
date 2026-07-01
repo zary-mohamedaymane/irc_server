@@ -75,8 +75,7 @@ void Server::run()
 
 	while (instance)
 	{
-		int r;
-		if ((r = poll(&_pollFds[0], _pollFds.size(), -1)) < 0 && instance)
+		if (poll(&_pollFds[0], _pollFds.size(), -1) < 0 && instance)
 			throw std::runtime_error("poll() failed");
 
 		for (size_t i = 0; i < _pollFds.size();)
@@ -137,7 +136,7 @@ void Server::_handleConnect()
 	}
 
 	int prior_flags = fcntl(clientSocket, F_GETFL);
-	if (fcntl(clientSocket, F_SETFL, prior_flags | O_NONBLOCK) < 0) 
+	if (fcntl(clientSocket, F_SETFL, prior_flags | O_NONBLOCK) < 0)
 	{
 		(close(clientSocket), clientSocket = -1);
 		std::cerr << "new client: fcntl() failed" << std::endl;
@@ -248,11 +247,6 @@ void Server::_handleMessage(size_t i, bool &erased)
 		std::string& buffer = _Users[_pollFds[i].fd]._buffer;
 		buffer.append(buf);
 
-		/* debug */
-		//std::cout << "buf: [" << buf << "]" << std::endl;
-		//std::cout << "client buffer: [" << buffer << "]\n\n" << std::endl;
-		/* debug */
-
 		size_t end = 0;
 		while (!erased && (end = buffer.find("\n", 0)) != std::string::npos)
 		{
@@ -268,7 +262,7 @@ void Server::_handleMessage(size_t i, bool &erased)
 
 void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 {
-	// parse command into tokens (COMMAND parameter list)
+	// parse command into tokens (COMMAND PARAMETERS :TRAILING)
 	// call appropriate authentication / commad handler
 
 	/* debug */
@@ -297,8 +291,7 @@ void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 	std::string cmd = tokens[0];
 	tokens.erase(tokens.begin());
 
-	if (cmd == "CAP") {_handleCapabilityNegotiation(i, tokens); return;}
-	else if (cmd == "PASS") {_handlePass(i, tokens, erased); return;}
+	if (cmd == "PASS") {_handlePass(i, tokens, erased); return;}
 	else if (cmd == "NICK") {_handleNick(i, tokens, erased); return;}
 	else if (cmd == "USER") {_handleUser(i, tokens, erased); return;}
 
@@ -306,7 +299,7 @@ void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 		(cmd == "JOIN" || cmd == "PART" || cmd == "MODE" || cmd == "TOPIC"
 		|| cmd == "INVITE" || cmd == "KICK" || cmd == "PRIVMSG"))
 	{
-	 	_sendMessage(i, ":localhost.ircserver 451 * :not registered\r\n");
+	 	_sendMessage(i, ":localhost.ircserver 451 :You have not registered\r\n");
 		return;
 	}
 
@@ -317,7 +310,7 @@ void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 	else if (cmd == "INVITE") _handleInvite(i, tokens);
 	else if (cmd == "KICK") _handleKick(i, tokens);
 	else if (cmd == "PRIVMSG") _handlePrivmsg(i, tokens);
-	else if (cmd == "QUIT") {_handleQuit(i, tokens.size() > 0? tokens[0]: "error"); erased = true;}
+	else if (cmd == "QUIT") {_handleQuit(i, tokens.size() > 0? tokens[0]: "going away"); erased = true;}
 	// any other command is ignored
 }
 
@@ -333,6 +326,7 @@ std::string Server::_tolowerStr(std::string str)
   // considered to be the lower case equivalents of the characters []\,
   // respectively. This is a critical issue when determining the
   // equivalence of two nicknames
+
   for (size_t i = 0; i < str.size(); i++)
 	{
 		if (str[i] == '[')
@@ -347,7 +341,7 @@ std::string Server::_tolowerStr(std::string str)
   return str;
 }
 
-size_t Server::_getUserByNick(std::string nickName) // IRC is case-insensitive; returns pollFds index
+size_t Server::_getPollIndexByNick(std::string nickName) // IRC is case-insensitive; returns pollFds index
 {
 	nickName = _tolowerStr(nickName);
 	for (size_t i = 1; i < _pollFds.size(); i++)
@@ -375,12 +369,10 @@ void Server::_broadcastToChannel(std::string chanName, std::string message, int 
 	// loop over channel members
 	// get pollIndex from fd and send message
 
-	if (_Channels.find(chanName) == _Channels.end())
-    return;
-
-	// normally every method that calls broadcast to channel must send a lowercase name
-	// but one can never be too safe
 	chanName = _tolowerStr(chanName);
+
+	if (_Channels.find(chanName) == _Channels.end())
+		return;
 
   Channel& chan = _Channels[chanName];
   for (std::set<int>::iterator it = chan._memberFds.begin(); it != chan._memberFds.end(); ++it)

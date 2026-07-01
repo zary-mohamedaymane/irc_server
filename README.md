@@ -8,13 +8,13 @@ The functionalities that are supported are:
 	- private and channel messaging
 	- channels with the following commands for operators: kick, invite,
 		and the following channel modes: key, limit, topic, operator, invite-only
-The server is fully compatible with our selected client: IRSSI
+The server is fully compatible with our selected client: sic (simple irc client)
 
 # Instructions
 
 * compile the project using `make`.
 * start the server using `./ircserv <port> <password>`.
-* connect to the server using irssi or nc.
+* connect to the server using sic or nc.
 
 # Resources
 

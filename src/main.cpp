@@ -8,7 +8,7 @@
 static bool validPort(char *port) {
   size_t len = std::strlen(port);
 
-  if (len == 0)
+  if (len == 0 || len > 5)
     return false;
   for (size_t i = 0; i < len; i++) {
     if (port[i] < '0' || port[i] > '9')
@@ -26,10 +26,10 @@ static bool validPassword(char *password) {
   if (len == 0)
     return false;
   for (size_t i = 0; i < len; i++) {
-    if (!std::isspace(password[i]))
-      return true;
+    if (std::isspace(password[i]))
+      return false;
   }
-  return false;
+  return true;
 }
 
 static void handler(int signum) {

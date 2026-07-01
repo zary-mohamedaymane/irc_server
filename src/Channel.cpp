@@ -11,7 +11,7 @@ bool Channel::_validChannelName(std::string chanName)
 
 	if (!(chanName[0] == '#' || chanName[0] == '&'))
 		return false;
-	
+
 	for (size_t i = 1; i < chanName.length(); i++)
 	{
 		if (std::isspace(chanName[i]) || chanName[i] == 7 || chanName[i] == ',')

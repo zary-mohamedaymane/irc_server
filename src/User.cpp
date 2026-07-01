@@ -17,7 +17,7 @@ bool User::_validNickName(std::string s)
   char first = s[0];
   bool isFirstLetter = std::isalpha(static_cast<unsigned char>(first));
   bool isFirstSpecial = (specials.find(first) != std::string::npos && first != '-');
-  
+
   if (!isFirstLetter && !isFirstSpecial)
     return false;
 

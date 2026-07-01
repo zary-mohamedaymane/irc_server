@@ -3,24 +3,6 @@
 #include <sstream>
 #include <string>
 
-void Server::_handleCapabilityNegotiation(size_t i, std::vector<std::string> &tokens)
-{
-  User &user = _Users[_pollFds[i].fd];
-
-  if (tokens[0] == "LS")
-    _sendMessage(i, ":localhost.ircserver CAP * LS :\r\n");
-  else if (tokens[0] == "END")
-  {
-    if (user._registered)
-    {
-      _sendMessage(i, ":localhost.ircserver 001 " + user._nickName + " :Welcome to the 42 Internet Relay Network " + user._nickName + "!" + user._userName + "@" + user._hostName + "\r\n");
-      _sendMessage(i, ":localhost.ircserver 002 " + user._nickName + " :Your host is localhost, running version 1.0\r\n");
-      _sendMessage(i, ":localhost.ircserver 003 " + user._nickName + " :This Sever was created today\r\n");
-      _sendMessage(i, ":localhost.ircserver 004 " + user._nickName + " localhost.ircserver 1.0 - itkol\r\n");
-    }
-  }
-}
-
 void Server::_handlePass(size_t i, std::vector<std::string> &tokens, bool &erased)
 {
   // 461 = ERR_NEEDMOREPARAMS
@@ -70,7 +52,7 @@ void Server::_handleNick(size_t i, std::vector<std::string> &tokens, bool &erase
   }
   else if (!User::_validNickName(tokens[0]))
     _sendMessage(i, ":localhost.ircserver 432 "  + tokens[0] + " :Erroneous nickname\r\n");
-  else if ((j = _getUserByNick(tokens[0])) != 0 && i != j)
+  else if ((j = _getPollIndexByNick(tokens[0])) != 0 && i != j)
     _sendMessage(i, ":localhost 433 " + tokens[0] + " :Nickname is already in use\r\n");
   else
   {
@@ -330,7 +312,7 @@ void Server::_handlePrivmsg(size_t i, std::vector<std::string> &tokens) {
     }
     else
     {
-      size_t targetIndex = _getUserByNick(target);
+      size_t targetIndex = _getPollIndexByNick(target);
       if (targetIndex == 0)
       {
         _sendMessage(i, ":localhost.ircserver 401 " + user._nickName + " " + target + " :No such nick/channel\r\n");
@@ -422,7 +404,7 @@ void Server::_handleKick(size_t i, std::vector<std::string> &tokens) {
       continue;
     }
 
-    size_t targetUserPollIndex = _getUserByNick(currentUser);
+    size_t targetUserPollIndex = _getPollIndexByNick(currentUser);
     if (!targetUserPollIndex) {
       _sendMessage(i, "localhost.ircserver 401 KICK " + currentUser + " :No such nick\r\n");
       continue;
@@ -485,7 +467,7 @@ void Server::_handleInvite(size_t i, std::vector<std::string> &tokens) {
     }
   }
 
-  size_t  targetUserPollIndex = _getUserByNick(targetUser);
+  size_t  targetUserPollIndex = _getPollIndexByNick(targetUser);
   if (!targetUserPollIndex) {
     _sendMessage(i, "localhost.ircserver 401 INVITE " + targetUser + " :No such nick\r\n");
     return ;
@@ -589,7 +571,7 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
     else if (c == 'o') {
       if (argIndex < tokens.size()) {
         std::string targetNick = tokens[argIndex++];
-        size_t      targetUserPollIndex = _getUserByNick(targetNick);
+        size_t      targetUserPollIndex = _getPollIndexByNick(targetNick);
         if (!targetUserPollIndex) {
           _sendMessage(i, ":localhost.ircserver 401 " + sender._nickName + " " + targetNick + " :No such nick\r\n");
           continue ;
