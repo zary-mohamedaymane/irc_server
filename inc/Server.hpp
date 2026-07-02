@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <deque>
 #include <poll.h> // struct pollfd
 #include <cstdlib>  // added by yhajbi
 #include <sstream>  // added by yhajbi
@@ -39,15 +40,14 @@ class Server
 		void						_sendMessage(size_t poll_index, std::string message);
 
 		std::string			_tolowerStr(std::string str);
-		size_t					_getUserByNick(std::string nickName); // returns user poll_index or 0 if not found
+		size_t					_getPollIndexByNick(std::string nickName); // returns user poll_index or 0 if not found
 		size_t					_getPollIndexByFd(int fd);
 
 		void 						_broadcastToChannel(std::string chanName, std::string message, int excludeFd);
 
-		void						_handleCapabilityNegotiation(size_t poll_index, std::vector<std::string>& tokens);
-		void						_handlePass(size_t poll_index, std::vector<std::string>& tokens, bool& erased);
-		void						_handleNick(size_t poll_index, std::vector<std::string>& tokens, bool& erased);
-		void						_handleUser(size_t poll_index, std::vector<std::string>& tokens, bool& erased);
+		void						_handlePass(size_t poll_index, std::vector<std::string>& tokens);
+		void						_handleNick(size_t poll_index, std::vector<std::string>& tokens);
+		void						_handleUser(size_t poll_index, std::vector<std::string>& tokens);
 
 		void						_handleJoin(size_t poll_index, std::vector<std::string>& tokens);
 		void						_handlePart(size_t poll_index, std::vector<std::string>& tokens);
@@ -67,7 +67,3 @@ class Server
 };
 
 #endif
-
-// IRC PROTOCOL GRAMMAR (RFC):
-// + ERROR MESSAGES NEED TO BE EXACTLY LIKE IN THE RFC
-// + PARSE CHANNEL NAMES

@@ -1,25 +1,27 @@
-*This project has been created as part of the 42 curriculum by mzary and yhajbi.*
+𝘛𝘩𝘪𝘴 𝘱𝘳𝘰𝘫𝘦𝘤𝘵 𝘩𝘢𝘴 𝘣𝘦𝘦𝘯 𝘤𝘳𝘦𝘢𝘵𝘦𝘥 𝘢𝘴 𝘱𝘢𝘳𝘵 𝘰𝘧 𝘵𝘩𝘦 42 𝘤𝘶𝘳𝘳𝘪𝘤𝘶𝘭𝘶𝘮 𝘣𝘺 𝘮𝘻𝘢𝘳𝘺, 𝘺𝘩𝘢𝘫𝘣𝘪.
 
 
 # Description
 
-In this project we implement our own IRC server following the RFC 1459 published in 1993 by Jarkko Oikarinen and Darren Reed.
-IRC (Internet Relay Chat) is a text-based instant messaging protocol. IRC works on a client to server networking model and operates on the application layer of the OSI model.Users may connect to a server using a web app, a dedicated client software, such as irssi,  or simply
-using the network utility command nc (NetCat).
-
+The goal from this project is to implement a minimal IRC server following RFC 1459.
+The functionalities that are supported are:
+	- private and channel messaging
+	- channels with the following commands for operators: kick, invite,
+		and the following channel modes: key, limit, topic, operator, invite-only
+The server is fully compatible with our selected client: sic (simple irc client)
 
 # Instructions
 
-clone and compile using `make`.
-start the server using `./ircserv <port> <password>`.
-connect to the server using irssi or nc.
-
+* compile the project using `make`.
+* start the server using `./ircserv <port> <password>`.
+* connect to the server using sic or nc.
 
 # Resources
 
 ## references
 
-**External functions used**
+	Syscall documentation:
+
 https://man7.org/linux/man-pages/man2/socket.2.html
 https://man7.org/linux/man-pages/man2/fcntl.2.html
 https://man7.org/linux/man-pages/man3/setsockopt.3p.html
@@ -33,12 +35,15 @@ https://man7.org/linux/man-pages/man2/accept.2.html
 https://man7.org/linux/man-pages/man2/recv.2.html
 https://man7.org/linux/man-pages/man2/sendmsg.2.html
 
+	Language features (c++98):
+
 https://en.cppreference.com/cpp/container/vector
 https://en.cppreference.com/cpp/container/map
 
-**RFC 1459**
+	IRC Protocol (RFC 1459):
+	
 https://datatracker.ietf.org/doc/html/rfc1459
 
 ## AI usage
 
-The usage of AI was employed to test the code's integrety, catch bugs and optimizing the code.
+AI was smartly used to help with documentation, as well as debug specific client behaviors.

@@ -92,8 +92,8 @@ void Server::run()
 			{
 				bool erased = false;
         if (_pollFds[i].revents & POLLIN)
-            _handleMessage(i, erased);
-        if (!erased && (_pollFds[i].revents & (POLLHUP | POLLERR)))
+        	_handleMessage(i, erased);
+        if (!erased && (_pollFds[i].revents & (POLLERR | POLLHUP)))
         {
             _handleQuit(i, "error or hangup");
             erased = true;
@@ -131,15 +131,16 @@ void Server::_handleConnect()
 	int clientSocket = accept(_serverSocket, NULL, NULL);
 	if (clientSocket < 0)
 	{
-		std::cerr << "accept() failed"; // throw or just display error message?
+		std::cerr << "new client: accept() failed" << std::endl;
 		return;
 	}
 
 	int prior_flags = fcntl(clientSocket, F_GETFL);
-	if (fcntl(clientSocket, F_SETFL, prior_flags | O_NONBLOCK) < 0) 
+	if (fcntl(clientSocket, F_SETFL, prior_flags | O_NONBLOCK) < 0)
 	{
 		(close(clientSocket), clientSocket = -1);
-		throw std::runtime_error("fcntl() failed");
+		std::cerr << "new client: fcntl() failed" << std::endl;
+		return;
 	}
 
 	struct pollfd clientPoll;
@@ -162,8 +163,8 @@ void Server::_handleQuit(size_t i, std::string msg)
 	int fd = _pollFds[i].fd;
   User& user = _Users[fd];
 
-	//if (user._registered)
-	//{
+	if (user._registered)
+	{
 		std::string quitMsg = ":" + user._nickName + "!" + user._userName + "@" + user._hostName + " QUIT :" + msg + "\r\n";
 		for (std::map<int, User>::iterator it = _Users.begin(); it != _Users.end(); ++it)
 		{
@@ -191,10 +192,11 @@ void Server::_handleQuit(size_t i, std::string msg)
         	_Channels.erase(chanName);
     	}
     }
- // }
+}
 
 	_Users.erase(fd);
 	std::cout << "Client (FD = " << fd << ") disconnected from server" << std::endl;
+
 
 	(close(fd), fd = -1);
 	_pollFds.erase(_pollFds.begin() + i);
@@ -212,7 +214,13 @@ bool Server::_shareChannels(int userFd1, int userFd2)
 		{
 			// check if this channel is in user2's joined channels
 			if (user2._joinedChannels.find(chanName) != user2._joinedChannels.end())
-				return true;
+			{
+				// now check if users are actually still in channel and not only listing them
+				Channel& chan = _Channels[chanName];
+				if (chan._memberFds.find(userFd1) != chan._memberFds.end()
+					&& chan._memberFds.find(userFd2) != chan._memberFds.end())
+					return true;
+			}
 		}
 	}
 	return false;
@@ -255,13 +263,13 @@ void Server::_handleMessage(size_t i, bool &erased)
 
 void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 {
-	// parse command into tokens (COMMAND parameter list)
+	// parse command into tokens (COMMAND PARAMETERS :TRAILING)
 	// call appropriate authentication / commad handler
-	
+
 	/* debug */
 	std::cout << "'" << command << "'" << std::endl;
 	/* debug */
-	
+
 	std::vector<std::string>	tokens;
 	size_t										colonPos = command.find(":");
 	std::string								beforeColon = command;
@@ -284,16 +292,17 @@ void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 	std::string cmd = tokens[0];
 	tokens.erase(tokens.begin());
 
-	if (cmd == "CAP") {_handleCapabilityNegotiation(i, tokens); return;}
-	else if (cmd == "PASS") {_handlePass(i, tokens, erased); return;}
-	else if (cmd == "NICK") {_handleNick(i, tokens, erased); return;}
-	else if (cmd == "USER") {_handleUser(i, tokens, erased); return;}
+	if (cmd == "PASS") {_handlePass(i, tokens); return;}
+	else if (cmd == "NICK") {_handleNick(i, tokens); return;}
+	else if (cmd == "USER") {_handleUser(i, tokens); return;}
 
-	if (!_Users[_pollFds[i].fd]._registered &&
+	User& user = _Users[_pollFds[i].fd];
+	std::string target = user._nickName.empty() ? "*" : user._nickName;
+	if (!user._registered &&
 		(cmd == "JOIN" || cmd == "PART" || cmd == "MODE" || cmd == "TOPIC"
 		|| cmd == "INVITE" || cmd == "KICK" || cmd == "PRIVMSG"))
 	{
-	 	_sendMessage(i, ":localhost.ircserver 451 * :not registered\r\n");
+	 	_sendMessage(i, ":localhost.ircserver 451 " + target + " :You have not registered\r\n");
 		return;
 	}
 
@@ -304,7 +313,7 @@ void Server::_parseCommand(size_t i, std::string& command, bool& erased)
 	else if (cmd == "INVITE") _handleInvite(i, tokens);
 	else if (cmd == "KICK") _handleKick(i, tokens);
 	else if (cmd == "PRIVMSG") _handlePrivmsg(i, tokens);
-	else if (cmd == "QUIT") {_handleQuit(i, tokens.size() > 0? tokens[0]: "error"); erased = true;}
+	else if (cmd == "QUIT") {_handleQuit(i, tokens.size() > 0? tokens[0]: "going away"); erased = true;}
 	// any other command is ignored
 }
 
@@ -316,12 +325,26 @@ void Server::_sendMessage(size_t i, std::string message)
 
 std::string Server::_tolowerStr(std::string str)
 {
+	// Because of IRC's scandanavian origin, the characters {}| are
+  // considered to be the lower case equivalents of the characters []\,
+  // respectively. This is a critical issue when determining the
+  // equivalence of two nicknames
+
   for (size_t i = 0; i < str.size(); i++)
-    str[i] = std::tolower(static_cast<unsigned char>(str[i]));
+	{
+		if (str[i] == '[')
+			str[i] = '{';
+		else if (str[i] == ']')
+			str[i] = '}';
+		else if (str[i] == '\\')
+			str[i] = '|';
+		else
+    	str[i] = std::tolower(static_cast<unsigned char>(str[i]));
+	}
   return str;
 }
 
-size_t Server::_getUserByNick(std::string nickName) // IRC is case-insensitive; returns pollFds index
+size_t Server::_getPollIndexByNick(std::string nickName) // IRC is case-insensitive; returns pollFds index
 {
 	nickName = _tolowerStr(nickName);
 	for (size_t i = 1; i < _pollFds.size(); i++)
@@ -345,16 +368,14 @@ size_t Server::_getPollIndexByFd(int fd)
 
 void Server::_broadcastToChannel(std::string chanName, std::string message, int excludeFd)
 {
-	// check if channel exists (to be safe hhh)
+	// check if channel exists
 	// loop over channel members
 	// get pollIndex from fd and send message
 
-	if (_Channels.find(chanName) == _Channels.end())
-    return;
-
-	// normally every method that calls broadcast to channel must send a lowercase name
-	// but one can never be too safe
 	chanName = _tolowerStr(chanName);
+
+	if (_Channels.find(chanName) == _Channels.end())
+		return;
 
   Channel& chan = _Channels[chanName];
   for (std::set<int>::iterator it = chan._memberFds.begin(); it != chan._memberFds.end(); ++it)
