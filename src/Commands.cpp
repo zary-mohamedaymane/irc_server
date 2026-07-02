@@ -356,36 +356,40 @@ void Server::_handlePrivmsg(size_t i, std::vector<std::string> &tokens) {
 /* ---------------------------------- YOUSSEF --------------------------------------------- */
 bool Server::_lookupChannel(std::string channelName) {
 
-  if (_Channels.find(channelName) != _Channels.end())
-    return (true);
-
-  return (false);
+	channelName = _tolowerStr(channelName); // in case channelName is not in lowercase
+	return _Channels.find(channelName) != _Channels.end();
 }
 
 bool Server::_lookupSender(int userFd, std::string channelName) {
 
-  Channel &targetChannel = _Channels.find(channelName)->second;
+	channelName = _tolowerStr(channelName);
 
-  if (targetChannel._memberFds.find(userFd) != targetChannel._memberFds.end())
-    return (true);
+	if (_lookupChannel(channelName) == false)
+		return false;
 
-  return (false);
+  Channel &targetChannel = _Channels[channelName];
+	return targetChannel._memberFds.find(userFd) != targetChannel._memberFds.end();
 }
 
 bool Server::_lookupSenderPrivilege(int userFd, std::string channelName) {
 
-  Channel &targetChannel = _Channels.find(channelName)->second;
+	channelName = _tolowerStr(channelName);
 
-  if (targetChannel._operatorFds.find(userFd) !=
-      targetChannel._operatorFds.end())
-    return (true);
-  return (false);
+	if (_lookupChannel(channelName) == false)
+		return false;
+
+	Channel &targetChannel = _Channels[channelName];
+	return targetChannel._operatorFds.find(userFd) != targetChannel._operatorFds.end();
 }
 
 void Server::_removeUserFromChannel(int userFd, std::string channelName) {
 
-  Channel &targetChannel = _Channels.find(channelName)->second;
+	channelName = _tolowerStr(channelName);
 
+	if (_lookupChannel(channelName) == false)
+		return;
+
+  Channel &targetChannel = _Channels[channelName];
   targetChannel._memberFds.erase(userFd);
   targetChannel._operatorFds.erase(userFd);
   targetChannel._invitedFds.erase(userFd);
@@ -393,12 +397,14 @@ void Server::_removeUserFromChannel(int userFd, std::string channelName) {
 
 void Server::_handleKick(size_t i, std::vector<std::string> &tokens) {
 
+	int senderFd = _pollFds[i].fd;
+	User& senderUser = _Users[senderFd];
+	std::string target = senderUser._nickName.empty() ? "*" : senderUser._nickName;
+
   if (tokens.size() < 2) {
-    _sendMessage(i, ":localhost.ircserver 461 KICK :Not enough parameters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " KICK :Not enough parameters\r\n");
     return;
   }
-
-  int senderFd = _pollFds[i].fd;
 
   std::vector<std::string> chanList = splitByComma(tokens[0]);
   std::vector<std::string> userList = splitByComma(tokens[1]);
@@ -409,7 +415,7 @@ void Server::_handleKick(size_t i, std::vector<std::string> &tokens) {
 
   if (chanList.size() > 1 && userList.size() > 1 &&
       chanList.size() != userList.size()) {
-    _sendMessage(i, ":localhost.ircserver 461 KICK :Not enough parameters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " KICK :Not enough parameters\r\n");
     return;
   }
 
@@ -422,32 +428,31 @@ void Server::_handleKick(size_t i, std::vector<std::string> &tokens) {
     std::string lowerChanName = _tolowerStr(currentChan);
 
     if (!_lookupChannel(lowerChanName)) {
-      _sendMessage(i, ":localhost.ircserver 403 KICK " + currentChan + " :No such channel\r\n");
+      _sendMessage(i, ":localhost.ircserver 403 " + target + " " + currentChan + " :No such channel\r\n");
       continue;
     }
     if (!_lookupSender(senderFd, lowerChanName)) {
-      _sendMessage(i, ":localhost.ircserver 442 KICK " + currentChan + " :You're not on that channel\r\n");
+      _sendMessage(i, ":localhost.ircserver 442 " + target + " " + currentChan + " :You're not on that channel\r\n");
       continue;
     }
     if (!_lookupSenderPrivilege(senderFd, lowerChanName)) {
-      _sendMessage(i, "localhost.ircserver 482 KICK " + currentChan + " :You're not channel operator\r\n");
+      _sendMessage(i, ":localhost.ircserver 482 " + target + " " + currentChan + " :You're not channel operator\r\n");
       continue;
     }
 
     size_t targetUserPollIndex = _getPollIndexByNick(currentUser);
     if (!targetUserPollIndex) {
-      _sendMessage(i, "localhost.ircserver 401 KICK " + currentUser + " :No such nick\r\n");
+      _sendMessage(i, ":localhost.ircserver 401 " + target + " " + currentUser + " :No such nick\r\n");
       continue;
     }
 
     int targetUserFd = _pollFds[targetUserPollIndex].fd;
 
     if (!_lookupSender(targetUserFd, lowerChanName)) {
-      _sendMessage(i, "localhost.ircserver 441 KICK " + currentUser + " " + currentChan + " :They aren't on that channel\r\n");
+      _sendMessage(i, ":localhost.ircserver 441 " + target + " " + currentUser + " " + currentChan + " :They aren't on that channel\r\n");
       continue;
     }
 
-    User& senderUser = _Users[senderFd];
     std::string kickMsg = ":" + senderUser._nickName + "!" + senderUser._userName + "@" + senderUser._hostName + " KICK " + currentChan + " " + currentUser;
     if (!reason.empty())
       kickMsg += " :" + reason;
@@ -457,34 +462,35 @@ void Server::_handleKick(size_t i, std::vector<std::string> &tokens) {
 
     _removeUserFromChannel(targetUserFd, currentChan);
 
-    _Users.find(targetUserFd)->second._joinedChannels.erase(lowerChanName);
+    _Users[targetUserFd]._joinedChannels.erase(lowerChanName);
 
-    if (_Channels.find(currentChan)->second._memberFds.empty())
-      _Channels.erase(_Channels.find(currentChan));
+    if (_Channels[lowerChanName]._memberFds.empty())
+      _Channels.erase(lowerChanName);
   }
 }
 
 void Server::_handleInvite(size_t i, std::vector<std::string> &tokens) {
 
+	int senderFd = _pollFds[i].fd;
+	User& sender = _Users[senderFd];
+	std::string target = sender._nickName.empty()? "*" : sender._nickName;
+
   if (tokens.size() < 2) {
-    _sendMessage(i, ":localhost.ircserver 461 INVITE :Not enough parameters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " INVITE :Not enough parameters\r\n");
     return;
   }
 
-  int senderFd = _pollFds[i].fd;
   std::string targetUser = tokens[0];
   std::string targetChan = tokens[1];
   std::string lowerChanName = _tolowerStr(targetChan);
 
-  User& sender = _Users[senderFd];
-
   if (!_lookupChannel(lowerChanName)) {
-    _sendMessage(i, ":localhost.ircserver 403 INVITE " + targetChan + " :No such channel\r\n");
+    _sendMessage(i, ":localhost.ircserver 403 " + target + " " + targetChan + " :No such channel\r\n");
     return ;
   }
 
   if (!_lookupSender(senderFd, lowerChanName)) {
-    _sendMessage(i, ":localhost.ircserver 442 INVITE " + targetChan + " :You're not on that channel\r\n");
+    _sendMessage(i, ":localhost.ircserver 442 " + target + " " + targetChan + " :You're not on that channel\r\n");
     return ;
   }
 
@@ -492,52 +498,54 @@ void Server::_handleInvite(size_t i, std::vector<std::string> &tokens) {
 
   if (chan._inviteOnly) {
     if (!_lookupSenderPrivilege(senderFd, lowerChanName)) {
-      _sendMessage(i, "localhost.ircserver 482 INVITE " + targetChan + " :You're not channel operator\r\n");
+      _sendMessage(i, ":localhost.ircserver 482 " + target + " " + targetChan + " :You're not channel operator\r\n");
       return ;
     }
   }
 
   size_t  targetUserPollIndex = _getPollIndexByNick(targetUser);
   if (!targetUserPollIndex) {
-    _sendMessage(i, "localhost.ircserver 401 INVITE " + targetUser + " :No such nick\r\n");
+    _sendMessage(i, ":localhost.ircserver 401 " + target + " " + targetUser + " :No such nick\r\n");
     return ;
   }
 
   int targetUserFd = _pollFds[targetUserPollIndex].fd;
 
   if (_lookupSender(targetUserFd, lowerChanName)) {
-    _sendMessage(i, ":localhost.ircserver 443 INVITE " + targetUser + " " + targetChan + " :is already on channel\r\n");
+    _sendMessage(i, ":localhost.ircserver 443 " + target + " " + targetUser + " " + targetChan + " :is already on channel\r\n");
     return ;
   }
 
   chan._invitedFds.insert(targetUserFd);
-  _sendMessage(i, ":localhost.ircserver 341 INVITE " + sender._nickName + " " + targetUser + " " + targetChan + "\r\n");
-  _sendMessage(targetUserPollIndex, ":" + sender._nickName + "!" + sender._userName + "@" + sender._hostName + " INVITE " + targetUser + " :" + targetChan + "\r\n");
+  _sendMessage(i, ":localhost.ircserver 341 " + target + " INVITE " + targetUser + " " + targetChan + "\r\n");
+  _sendMessage(targetUserPollIndex, ":" + sender._nickName + "!" + sender._userName + "@" + sender._hostName + " INVITE " + targetUser + " " + targetChan + "\r\n");
 }
 
 void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
 
-  if (tokens.size() < 1) {
-    _sendMessage(i, "MODE :Not enough parameters\r\n");
-    return ;
-  }
-
-  std::string target = tokens[0];
-  if (target[0] != '#' && target[0] != '&')
-    return ;
-
-  std::string lowerChanName = _tolowerStr(target);
-  if (!_lookupChannel(lowerChanName)) {
-    _sendMessage(i, ":localhost.ircserver 403 MODE :" + target + " :No such channel\r\n");
-    return ;
-  }
-
-  int       senderFd = _pollFds[i].fd;
+	int       senderFd = _pollFds[i].fd;
   User&     sender = _Users[senderFd];
+	std::string target = sender._nickName.empty()? "*" : sender._nickName;
+
+  if (tokens.size() < 1) {
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " MODE :Not enough parameters\r\n");
+    return ;
+  }
+
+  std::string channelName = tokens[0];
+  if (channelName[0] != '#' && channelName[0] != '&')
+    return ;
+
+  std::string lowerChanName = _tolowerStr(channelName);
+  if (!_lookupChannel(lowerChanName)) {
+    _sendMessage(i, ":localhost.ircserver 403 " + target + " " + channelName + " :No such channel\r\n");
+    return ;
+  }
+
   Channel&  chan = _Channels[lowerChanName];
 
   if (tokens.size() == 1) {
-    std::string viewModeStr = ":localhost.ircserver 324 " + sender._nickName + " " + target + " ";
+    std::string viewModeStr = ":localhost.ircserver 324 " + sender._nickName + " " + channelName + " ";
     if (chan._inviteOnly)
       viewModeStr += "+i";
     if (chan._topicProtected)
@@ -555,7 +563,7 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
   }
 
   if (!_lookupSenderPrivilege(senderFd, lowerChanName)) {
-    _sendMessage(i, "localhost.ircserver 482 MODE :" + target + " :You're not channel operator\r\n");
+    _sendMessage(i, ";localhost.ircserver 482 " + target + " " + channelName + " :You're not channel operator\r\n");
     return ;
   }
 
@@ -579,7 +587,7 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
         if (argIndex < tokens.size())
           chan._key = tokens[argIndex++];
         else {
-          _sendMessage(i, ":localhost.ircserver 461 MODE :Not enough parameters\r\n");
+          _sendMessage(i, ":localhost.ircserver 461 " + target + " MODE :Not enough parameters\r\n");
           return ;
         }
       }
@@ -591,7 +599,7 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
         if (argIndex < tokens.size())
           chan._userLimit = std::atoi(tokens[argIndex++].c_str());
         else {
-          _sendMessage(i, ":localhost.ircserver 461 MODE :Not enough paramters\r\n");
+          _sendMessage(i, ":localhost.ircserver 461 " + target + " MODE :Not enough parameters\r\n");
           return ;
         }
       }
@@ -603,7 +611,7 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
         std::string targetNick = tokens[argIndex++];
         size_t      targetUserPollIndex = _getPollIndexByNick(targetNick);
         if (!targetUserPollIndex) {
-          _sendMessage(i, ":localhost.ircserver 401 " + sender._nickName + " " + targetNick + " :No such nick\r\n");
+          _sendMessage(i, ":localhost.ircserver 401 " + target + " " + targetNick + " :No such nick\r\n");
           continue ;
         }
         int targetUserFd = _pollFds[targetUserPollIndex].fd;
@@ -613,16 +621,17 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
           chan._operatorFds.erase(targetUserFd);
       }
       else {
-        _sendMessage(i, ":localhost.ircserver 461 MODE :Not enough paramters\r\n");
+      	_sendMessage(i, ":localhost.ircserver 461 " + target + " MODE :Not enough parameters\r\n");
         return ;
       }
     }
     else
-      _sendMessage(i, ":localhost.ircserver 472 " + sender._nickName + " " + c + " :is unknown mode char to me \r\n");
+      _sendMessage(i, ":localhost.ircserver 472 " + target + " " + c + " :is unknown mode char to me \r\n");
   }
 
   std::string broadcastMsg = ":" + sender._nickName + "!" + sender._userName + "@" + sender._hostName + " MODE ";
   for (size_t t = 0; t < tokens.size(); t++) {
+  	broadcastMsg += tokens[t];
     if (t < tokens.size() - 1)
       broadcastMsg += " ";
   }
