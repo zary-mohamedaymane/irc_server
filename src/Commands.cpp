@@ -534,7 +534,10 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
 
   std::string channelName = tokens[0];
   if (channelName[0] != '#' && channelName[0] != '&')
+  {
+  	_sendMessage(i, ":localhost.ircserver 403 " + target + " " + channelName + " :No such channel\r\n");
     return ;
+  }
 
   std::string lowerChanName = _tolowerStr(channelName);
   if (!_lookupChannel(lowerChanName)) {
@@ -641,8 +644,12 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
 
 void Server::_handleTopic(size_t i, std::vector<std::string> &tokens) {
 
+	int senderFd = _pollFds[i].fd;
+  User&     sender = _Users[senderFd];
+ 	std::string target = sender._nickName.empty()? "*" : sender._nickName;
+
   if (tokens.size() < 1) {
-    _sendMessage(i, ":localhost.ircserver 461 TOPIC :Not enough paramters\r\n");
+    _sendMessage(i, ":localhost.ircserver 461 " + target + " TOPIC :Not enough paramters\r\n");
     return ;
   }
 
@@ -650,31 +657,28 @@ void Server::_handleTopic(size_t i, std::vector<std::string> &tokens) {
   std::string lowerChanName = _tolowerStr(targetChan);
 
   if (!_lookupChannel(lowerChanName)) {
-    _sendMessage(i, ":localhost.ircserver 403 " + _Users[_pollFds[i].fd]._nickName + " " + targetChan + " :No such channel\r\n");
+    _sendMessage(i, ":localhost.ircserver 403 " + target + " " + targetChan + " :No such channel\r\n");
     return ;
   }
 
-  int senderFd = _pollFds[i].fd;
-
   if (!_lookupSender(senderFd, lowerChanName)) {
-    _sendMessage(i, ":localhost.ircserver 442 " + _Users[_pollFds[i].fd]._nickName + " " + targetChan + " :You're not on that channel\r\n");
+    _sendMessage(i, ":localhost.ircserver 442 " + target + " " + targetChan + " :You're not on that channel\r\n");
     return ;
   }
 
   Channel&  chan = _Channels[lowerChanName];
-  User&     sender = _Users[senderFd];
 
   if (tokens.size() == 1) {
     if (chan._topic.empty())
-      _sendMessage(i, ":localhost.ircserver 331 " + sender._nickName + " " + targetChan + " :No topic is set\r\n");
+      _sendMessage(i, ":localhost.ircserver 331 " + target + " " + targetChan + " :No topic is set\r\n");
     else
-      _sendMessage(i, ":localhost.ircserver 332 " + sender._nickName + " " + targetChan + " :" + chan._topic + "\r\n");
+      _sendMessage(i, ":localhost.ircserver 332 " + target + " " + targetChan + " :" + chan._topic + "\r\n");
     return ;
   }
 
   if (chan._topicProtected) {
     if (!_lookupSenderPrivilege(senderFd, lowerChanName)) {
-      _sendMessage(i, ":localhost.ircserver 482 " + sender._nickName + " " + targetChan + " :You're not channel operator\r\n");
+      _sendMessage(i, ":localhost.ircserver 482 " + target + " " + targetChan + " :You're not channel operator\r\n");
       return ;
     }
   }
