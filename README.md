@@ -4,17 +4,20 @@
 # Description
 
 The goal from this project is to implement a minimal IRC server following RFC 1459.
+
 The functionalities that are supported are:
-	- private and channel messaging
-	- channels with the following commands for operators: kick, invite,
-		and the following channel modes: key, limit, topic, operator, invite-only
+
+* private and channel messaging
+* channel operator commands: invite, kick, mode.
+* channel modes: t (topic-protected), i (invite-only), k (channel key), l (users limit), o (operator privilege)
+
 The server is fully compatible with our selected client: sic (simple irc client)
 
 # Instructions
 
 * compile the project using `make`.
 * start the server using `./ircserv <port> <password>`.
-* connect to the server using sic or nc.
+* connect to the server using sic `sic -h localhost -p <port> -n <nickname> -k <password>` or nc.
 
 # Resources
 
@@ -46,4 +49,4 @@ https://datatracker.ietf.org/doc/html/rfc1459
 
 ## AI usage
 
-AI was smartly used to help with documentation, as well as debug specific client behaviors.
+AI was used to help with documentation, as well as debug specific client behaviors.
