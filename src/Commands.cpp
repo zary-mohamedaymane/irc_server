@@ -566,7 +566,7 @@ void Server::_handleMode(size_t i, std::vector<std::string> &tokens) {
   }
 
   if (!_lookupSenderPrivilege(senderFd, lowerChanName)) {
-    _sendMessage(i, ";localhost.ircserver 482 " + target + " " + channelName + " :You're not channel operator\r\n");
+    _sendMessage(i, ":localhost.ircserver 482 " + target + " " + channelName + " :You're not channel operator\r\n");
     return ;
   }
 
